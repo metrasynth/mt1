@@ -1,9 +1,48 @@
 /* eslint global-require: 1, flowtype-errors/show-errors: 0 */
 // @flow
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow } from 'electron'
+import sunvox from 'sunvox-dll-node'
+import abletonlink from 'abletonlink'
+
 import MenuBuilder from './menu';
 
 let mainWindow = null;
+
+const SUNVOX_INIT_FLAGS = 0
+sunvox.sv_init(null, 44100, 2, SUNVOX_INIT_FLAGS)
+sunvox.sv_open_slot(0)
+
+app.sunvox = sunvox
+
+const link = new abletonlink();
+
+const onDownbeat = []
+
+let lastBeat = 0.0;
+link.startUpdate(2, (beat, phase, bpm) => {
+  beat = 0 ^ beat;
+  sunvox.sv_send_event(0, 0, 0, 0, 0, 0x1f, Math.round(bpm))
+  if(0 < beat - lastBeat) {
+    console.log('beat', { beat, phase, bpm })
+    if (phase < 1) {
+      while (onDownbeat.length > 0) {
+        const f = onDownbeat.pop()
+        f(bpm)
+      }
+    }
+    lastBeat = beat;
+  }
+});
+
+app.playOnDownbeat = slot => {
+  onDownbeat.push(bpm => {
+    sunvox.sv_play_from_beginning(slot)
+  })
+}
+
+app.stop = slot => {
+  sunvox.sv_stop(slot)
+}
 
 if (process.env.NODE_ENV === 'production') {
   const sourceMapSupport = require('source-map-support');
